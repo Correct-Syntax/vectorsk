@@ -27,6 +27,12 @@ GL_RGBA8 = 0x8058
 ADD_MODE = 0
 EDIT_MODE = 1
 
+# Objects
+OBJECT_RECT = 0
+OBJECT_TRIANGLE = 1
+OBJECT_ELLIPSE = 2
+OBJECT_TEXT = 3
+
 # Horizontal align
 ALIGN_LEFT 		= 1 << 0 # Default, align text horizontally to left.
 ALIGN_CENTER 	= 1 << 1 # Align text horizontally to center.
@@ -68,6 +74,9 @@ class BaseObject(object):
                            int(self.pos[1]+self.size[1]-6), 
                            10, 10)
 
+    def CalcPostSize(self):
+        pass
+
     def DrawObject(self, canvas):
         if self.rotation != 0.0:
             canvas.save()
@@ -83,8 +92,6 @@ class BaseObject(object):
 class Ellipse(BaseObject):
     def __init__(self, id, pos):
         BaseObject.__init__(self, id, pos)
-        
-        self.CalculateBounding()
 
     def Draw(self, canvas):
         paint = skia.Paint(AntiAlias=True,
@@ -103,8 +110,6 @@ class Rectangle(BaseObject):
     def __init__(self, id, pos):
         BaseObject.__init__(self, id, pos)
 
-        self.CalculateBounding()
-
     def Draw(self, canvas):
         paint = skia.Paint(AntiAlias=True,
                            Color=skia.Color4f(self.fill_color),
@@ -122,10 +127,6 @@ class Rectangle(BaseObject):
 class Triangle(BaseObject):
     def __init__(self, id, pos):
         BaseObject.__init__(self, id, pos)
-
-        self.size = (200.0, 160.0)
-
-        self.CalculateBounding()
 
     def Draw(self, canvas):
         paint = skia.Paint(AntiAlias=True,
@@ -148,12 +149,9 @@ class Text(BaseObject):
     def __init__(self, id, pos):
         BaseObject.__init__(self, id, pos)
 
-        self.text = "hello there"
-        self.font_size = 70.0
+        self.text = "Text"
+        self.font_size = 50.0
         self.font = skia.Font(skia.Typeface('Arial'), self.font_size)
-        
-        self.CalcTextSize()
-        self.CalculateBounding()
 
     def CalcTextSize(self):
         rect = skia.Rect.MakeXYWH(0, 0, 0, 0)
@@ -163,6 +161,10 @@ class Text(BaseObject):
     def CalcRect(self):
         self.bounding_rect = (int(self.pos[0]), int(self.pos[1]), 
                               int(self.size[0]), int(self.size[1]))
+
+    def CalcPostSize(self):
+        self.CalcTextSize()
+        self.CalculateBounding()
 
     def DrawText(self, canvas, txt, x, y, font, paint, flags):
         # Get bounds of txt
@@ -198,12 +200,6 @@ class Text(BaseObject):
                            StrokeWidth=0,
                            Style=skia.Paint.kStrokeAndFill_Style)
 
-        # canvas.clipRect(skia.Rect(
-        #                     self.pos[0], 
-        #                     self.pos[1], 
-        #                     self.pos[0]+self.size[0], 
-        #                     self.pos[1]+self.size[1]))
-
         self.DrawText(canvas, self.text, self.pos[0], self.pos[1], 
                       self.font, paint, ALIGN_TOP|ALIGN_MIDDLE)
 
@@ -221,6 +217,7 @@ class DrawCanvas(glcanvas.GLCanvas):
         self.last_pnt = None
         self.handle = None
         self.mode = ADD_MODE
+        self.current_obj_type = OBJECT_RECT
 
         # Stress test
         # for i in range(4, 8000):
@@ -289,14 +286,12 @@ class DrawCanvas(glcanvas.GLCanvas):
 
     def OnLeftDown(self, event):
         pnt = event.GetPosition()
-        # print(pnt, "<<")
 
         if self.mode == ADD_MODE:
-            self.selected = self.AddObject(pnt)
+            self.selected = self.AddObject(pnt, self.current_obj_type)
 
         elif self.mode == EDIT_MODE:
             obj = self.ObjectHitTest(pnt)
-            # print(obj, "///object///")
             if obj is not None:
                 self.selected = obj
             # else:
@@ -382,14 +377,27 @@ class DrawCanvas(glcanvas.GLCanvas):
             # print("No handle")
             return None
 
-    def AddObject(self, pos):
+    def AddObject(self, pos, obj_type):
         _id = wx.NewIdRef()
-        c2 = Rectangle(_id, pos)
-        self.objects.append(c2)
-        return c2
+        if obj_type == OBJECT_RECT:
+            obj = Rectangle(_id, pos)
+        elif obj_type == OBJECT_TRIANGLE:
+            obj = Triangle(_id, pos)
+        elif obj_type == OBJECT_ELLIPSE:
+            obj = Ellipse(_id, pos)
+        elif obj_type == OBJECT_TEXT:
+            obj = Text(_id, pos)
+        else:
+            print("Given object types does not exist")
+        self.objects.append(obj)
+        obj.CalcPostSize()
+        return obj
 
     def SwitchMode(self, mode):
         self.mode = mode
+
+    def SwitchObjectType(self, obj_type):
+        self.current_obj_type = obj_type
 
     def SetFillColor(self, color):
         if self.selected:
@@ -417,15 +425,18 @@ class Frame(wx.Frame):
 
         props_sz = wx.BoxSizer(wx.VERTICAL)
 
-        self.rot_slider = wx.Slider(
-            self, 100, 25, 0, 180, size=(250, -1),
-            style=wx.SL_HORIZONTAL | wx.SL_LABELS)
+        self.rot_slider = wx.Slider(self, 100, 25, 0, 180, size=(250, -1),
+                                    style=wx.SL_HORIZONTAL | wx.SL_LABELS)
 
         color_btn = wx.Button(self, -1, "Fill color", (50, 50))
 
         mode = wx.Choice(self, -1, (100, 50), choices=["ADD", "EDIT"])
 
+        obj_types = ["RECTANGLE", "ELLIPSE", "TEXT", "TRIANGLE"]
+        object_type = wx.Choice(self, -1, (100, 50), choices=obj_types)
+
         props_sz.Add(mode, 0, flag=wx.EXPAND|wx.ALL, border=6)
+        props_sz.Add(object_type, 0, flag=wx.EXPAND|wx.ALL, border=6)
         props_sz.Add(self.rot_slider, 0, flag=wx.EXPAND|wx.ALL, border=6)
         props_sz.Add(color_btn, 0, flag=wx.EXPAND|wx.ALL, border=6)
         
@@ -433,12 +444,12 @@ class Frame(wx.Frame):
         sz.Add(self.canvas, 0, flag=wx.EXPAND|wx.ALL)
         self.SetSizer(sz)
 
-        self.Maximize()
-
         self.rot_slider.Bind(wx.EVT_SLIDER, self.OnChangeRot)
         color_btn.Bind(wx.EVT_BUTTON, self.OnColorButton)
         mode.Bind(wx.EVT_CHOICE, self.OnChangeMode)
+        object_type.Bind(wx.EVT_CHOICE, self.OnChangeObjectType)
 
+        self.Maximize()
 
     def OnChangeMode(self, event):
         mode = event.GetString()
@@ -447,6 +458,19 @@ class Frame(wx.Frame):
         elif mode == "EDIT":
             mode = EDIT_MODE
         self.canvas.SwitchMode(mode)
+        event.Skip()
+
+    def OnChangeObjectType(self, event):
+        obj_type = event.GetString()
+        if obj_type == "RECTANGLE":
+            obj_type = OBJECT_RECT
+        elif obj_type == "ELLIPSE":
+            obj_type = OBJECT_ELLIPSE
+        elif obj_type == "TEXT":
+            obj_type = OBJECT_TEXT
+        elif obj_type == "TRIANGLE":
+            obj_type = OBJECT_TRIANGLE
+        self.canvas.SwitchObjectType(obj_type)
         event.Skip()
 
     def OnChangeRot(self, event):
