@@ -23,6 +23,10 @@ from wx import glcanvas
 
 GL_RGBA8 = 0x8058
 
+# Modes
+ADD_MODE = 0
+EDIT_MODE = 1
+
 # Horizontal align
 ALIGN_LEFT 		= 1 << 0 # Default, align text horizontally to left.
 ALIGN_CENTER 	= 1 << 1 # Align text horizontally to center.
@@ -35,10 +39,10 @@ ALIGN_BASELINE	= 1 << 6 # Default, align text vertically to baseline.
 
 
 class BaseObject(object):
-    def __init__(self, id):
+    def __init__(self, id, pos):
         self.id = id
-        self.pos = (100.0, 100.0)
-        self.size = (50.0, 50.0)
+        self.pos = pos
+        self.size = (1.0, 1.0)
         self.rotation = 0.0
         self.fill_color = (0.0, 0.2, 1.0, 1.0)
 
@@ -77,8 +81,8 @@ class BaseObject(object):
 
 
 class Ellipse(BaseObject):
-    def __init__(self, id):
-        BaseObject.__init__(self, id)
+    def __init__(self, id, pos):
+        BaseObject.__init__(self, id, pos)
         
         self.CalculateBounding()
 
@@ -96,11 +100,8 @@ class Ellipse(BaseObject):
 
 
 class Rectangle(BaseObject):
-    def __init__(self, id):
-        BaseObject.__init__(self, id)
-
-        self.pos = (150.0, 30.0)
-        self.size = (160.0, 190.0)
+    def __init__(self, id, pos):
+        BaseObject.__init__(self, id, pos)
 
         self.CalculateBounding()
 
@@ -119,10 +120,9 @@ class Rectangle(BaseObject):
 
 
 class Triangle(BaseObject):
-    def __init__(self, id):
-        BaseObject.__init__(self, id)
+    def __init__(self, id, pos):
+        BaseObject.__init__(self, id, pos)
 
-        self.pos = (100.0, 50.0)
         self.size = (200.0, 160.0)
 
         self.CalculateBounding()
@@ -145,11 +145,9 @@ class Triangle(BaseObject):
 
 
 class Text(BaseObject):
-    def __init__(self, id):
-        BaseObject.__init__(self, id)
+    def __init__(self, id, pos):
+        BaseObject.__init__(self, id, pos)
 
-        self.pos = (200.0, 400.0)
-        self.size = (40.0, 40.0)
         self.text = "hello there"
         self.font_size = 70.0
         self.font = skia.Font(skia.Typeface('Arial'), self.font_size)
@@ -160,7 +158,6 @@ class Text(BaseObject):
     def CalcTextSize(self):
         rect = skia.Rect.MakeXYWH(0, 0, 0, 0)
         self.font.measureText(self.text, bounds=rect)
-
         self.size = (rect.width(), rect.height())
 
     def CalcRect(self):
@@ -223,16 +220,7 @@ class DrawCanvas(glcanvas.GLCanvas):
         self.selected = None
         self.last_pnt = None
         self.handle = None
-
-        # Add objects
-        c2 = Rectangle(3)
-        self.objects.append(c2)
-        t = Text(2)
-        self.objects.append(t)
-        c = Ellipse(1)
-        self.objects.append(c)
-        tri = Triangle(4)
-        self.objects.append(tri)
+        self.mode = ADD_MODE
 
         # Stress test
         # for i in range(4, 8000):
@@ -303,16 +291,20 @@ class DrawCanvas(glcanvas.GLCanvas):
         pnt = event.GetPosition()
         # print(pnt, "<<")
 
-        obj = self.ObjectHitTest(pnt)
-        # print(obj, "///object///")
-        if obj is not None:
-            self.selected = obj
-        # else:
-        #     self.selected = None
+        if self.mode == ADD_MODE:
+            self.selected = self.AddObject(pnt)
 
-        if self.selected:
-            self.handle = self.HandlesHitTest(pnt)
-            # print(self.handle)
+        elif self.mode == EDIT_MODE:
+            obj = self.ObjectHitTest(pnt)
+            # print(obj, "///object///")
+            if obj is not None:
+                self.selected = obj
+            # else:
+            #     self.selected = None
+
+            if self.selected:
+                self.handle = self.HandlesHitTest(pnt)
+                # print(self.handle)
 
         self.last_pnt = pnt
         self.Refresh(False)
@@ -325,31 +317,50 @@ class DrawCanvas(glcanvas.GLCanvas):
     def OnMotion(self, event):
         pnt = event.GetPosition()
 
-        if event.LeftIsDown() and self.selected != None and event.Dragging():
-            if self.handle is not None:
-
+        if self.mode == ADD_MODE:
+            if event.LeftIsDown() and self.selected != None and event.Dragging():
                 dpnt = pnt - self.last_pnt
                 self.selected.size = (self.selected.size[0] + dpnt[0], 
                                       self.selected.size[1] + dpnt[1])
-
-            else:
-                dpnt = self.selected.pos + pnt - self.last_pnt
-                self.selected.pos = dpnt
             self.Refresh(False)
-        self.last_pnt = pnt
+            self.last_pnt = pnt
 
-        if self.selected:
-            handle = self.HandlesHitTest(pnt)
-            if handle == "tl":
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZENWSE))
-            elif handle == "tr":
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZENESW))
-            elif handle == "bl":
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZENESW))
-            elif handle == "br":
-                self.SetCursor(wx.Cursor(wx.CURSOR_SIZENWSE))
-            else:
-                self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
+        elif self.mode == EDIT_MODE:
+            if event.LeftIsDown() and self.selected != None and event.Dragging():
+                if self.handle is not None:
+                    dpnt = pnt - self.last_pnt
+                    self.selected.size = (self.selected.size[0] + dpnt[0], 
+                                          self.selected.size[1] + dpnt[1])
+                else:
+                    dpnt = self.selected.pos + pnt - self.last_pnt
+                    self.selected.pos = dpnt
+                self.Refresh(False)
+            self.last_pnt = pnt
+
+            if self.selected:
+                handle = self.HandlesHitTest(pnt)
+                if handle == "tl":
+                    self.SetCursor(wx.Cursor(wx.CURSOR_SIZENWSE))
+                elif handle == "tr":
+                    self.SetCursor(wx.Cursor(wx.CURSOR_SIZENESW))
+                elif handle == "bl":
+                    self.SetCursor(wx.Cursor(wx.CURSOR_SIZENESW))
+                elif handle == "br":
+                    self.SetCursor(wx.Cursor(wx.CURSOR_SIZENWSE))
+                else:
+                    self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
+
+    def SetContextViewport(self, x, y, width, height):
+        self.ctx.viewport = (x, y, width, height)
+
+    def DrawContext(self):
+        self.ctx.clear(255.0, 255.0, 255.0, 0.0)
+
+        for obj in self.objects:
+            obj.DrawObject(self.canvas)
+
+        # self.canvas.clipRect(skia.Rect(0, 0, 600, 600))
+        self.surface.flushAndSubmit()
 
     def ObjectHitTest(self, pos):
         for obj in self.objects:
@@ -371,17 +382,14 @@ class DrawCanvas(glcanvas.GLCanvas):
             # print("No handle")
             return None
 
-    def SetContextViewport(self, x, y, width, height):
-        self.ctx.viewport = (x, y, width, height)
+    def AddObject(self, pos):
+        _id = wx.NewIdRef()
+        c2 = Rectangle(_id, pos)
+        self.objects.append(c2)
+        return c2
 
-    def DrawContext(self):
-        self.ctx.clear(255.0, 255.0, 255.0, 0.0)
-
-        for obj in self.objects:
-            obj.DrawObject(self.canvas)
-
-        # self.canvas.clipRect(skia.Rect(0, 0, 600, 600))
-        self.surface.flushAndSubmit()
+    def SwitchMode(self, mode):
+        self.mode = mode
 
     def SetFillColor(self, color):
         if self.selected:
@@ -408,9 +416,6 @@ class Frame(wx.Frame):
         self.canvas = DrawCanvas(self, size=(900, 900))
 
         props_sz = wx.BoxSizer(wx.VERTICAL)
-        self.slider_x = wx.Slider(
-            self, 100, 25, 1, 100, size=(250, -1),
-            style=wx.SL_HORIZONTAL | wx.SL_LABELS)
 
         self.rot_slider = wx.Slider(
             self, 100, 25, 0, 180, size=(250, -1),
@@ -418,22 +423,30 @@ class Frame(wx.Frame):
 
         color_btn = wx.Button(self, -1, "Fill color", (50, 50))
 
-        props_sz.Add(self.slider_x, 0, flag=wx.EXPAND|wx.ALL)
-        props_sz.Add(self.rot_slider, 0, flag=wx.EXPAND|wx.ALL)
-        props_sz.Add(color_btn, 0, flag=wx.EXPAND|wx.ALL)
+        mode = wx.Choice(self, -1, (100, 50), choices=["ADD", "EDIT"])
 
+        props_sz.Add(mode, 0, flag=wx.EXPAND|wx.ALL, border=6)
+        props_sz.Add(self.rot_slider, 0, flag=wx.EXPAND|wx.ALL, border=6)
+        props_sz.Add(color_btn, 0, flag=wx.EXPAND|wx.ALL, border=6)
+        
         sz.Add(props_sz, 0, flag=wx.EXPAND|wx.ALL, border=20)
         sz.Add(self.canvas, 0, flag=wx.EXPAND|wx.ALL)
         self.SetSizer(sz)
 
         self.Maximize()
 
-        # self.slider_x.Bind(wx.EVT_SLIDER, self.OnChangeX)
         self.rot_slider.Bind(wx.EVT_SLIDER, self.OnChangeRot)
         color_btn.Bind(wx.EVT_BUTTON, self.OnColorButton)
+        mode.Bind(wx.EVT_CHOICE, self.OnChangeMode)
 
-    def OnChangeX(self, event):
-        self.canvas.SetXPos(self.slider_x.GetValue())
+
+    def OnChangeMode(self, event):
+        mode = event.GetString()
+        if mode == "ADD":
+            mode = ADD_MODE
+        elif mode == "EDIT":
+            mode = EDIT_MODE
+        self.canvas.SwitchMode(mode)
         event.Skip()
 
     def OnChangeRot(self, event):
