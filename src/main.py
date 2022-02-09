@@ -307,6 +307,9 @@ class DrawCanvas(glcanvas.GLCanvas):
     def OnLeftUp(self, event):
         pnt = event.GetPosition()
 
+        if self.mode == ADD_MODE:
+            self.SwitchMode(EDIT_MODE)
+
         self.last_pnt = pnt
 
     def OnMotion(self, event):
