@@ -14,6 +14,7 @@
 # limitations under the License.
 # ----------------------------------------------------------------------------
 
+import math
 import wx
 import cv2
 import skia
@@ -32,6 +33,7 @@ OBJECT_RECT = 0
 OBJECT_TRIANGLE = 1
 OBJECT_ELLIPSE = 2
 OBJECT_TEXT = 3
+OBJECT_IMAGE = 4
 
 # Horizontal align
 ALIGN_LEFT 		= 1 << 0 # Default, align text horizontally to left.
@@ -78,7 +80,7 @@ class BaseObject(object):
         pass
 
     def DrawObject(self, canvas):
-        if self.rotation != 0.0:
+        if self.rotation != 0.0:            
             canvas.save()
             canvas.rotate(self.rotation, 
                           self.pos[0]+(self.size[0]/2), 
@@ -204,6 +206,25 @@ class Text(BaseObject):
                       self.font, paint, ALIGN_TOP|ALIGN_MIDDLE)
 
 
+class Image(BaseObject):
+    def __init__(self, id, pos):
+        BaseObject.__init__(self, id, pos)
+
+        self.file_path = "C:/Users/Acer/vectorsk/img.jpg"
+
+    def CalcRect(self):
+        self.bounding_rect = (int(self.pos[0]), int(self.pos[1]), 
+                              int(self.size[0]), int(self.size[1]))
+
+    def Draw(self, canvas):
+        paint = skia.Paint()
+        image = skia.Image.MakeFromEncoded(
+            skia.Data.MakeFromFileName(self.file_path))
+        rect = skia.Rect.MakeXYWH(self.pos[0], self.pos[1], 
+                                  self.size[0], self.size[1])
+        canvas.drawImageRect(image, rect, paint)
+
+
 class DrawCanvas(glcanvas.GLCanvas):
     def __init__(self, parent, size):
         glcanvas.GLCanvas.__init__(self, parent, -1, size=size)
@@ -216,13 +237,18 @@ class DrawCanvas(glcanvas.GLCanvas):
         self.selected = None
         self.last_pnt = None
         self.handle = None
-        self.mode = ADD_MODE
+        self.mode = EDIT_MODE
         self.current_obj_type = OBJECT_RECT
 
         # Stress test
         # for i in range(4, 8000):
         #     e = Ellipse(i)
         #     self.objects.append(e)
+
+        obj = Rectangle(23, (100, 100))
+        obj.size = (200, 200)
+        obj.CalculateBounding()
+        self.objects.append(obj)
 
         self.Bind(wx.EVT_LEFT_DOWN, self.OnLeftDown)
         self.Bind(wx.EVT_LEFT_UP, self.OnLeftUp)
@@ -266,6 +292,7 @@ class DrawCanvas(glcanvas.GLCanvas):
             self.init = True
         self.OnDraw()
         if self.selected is not None:
+            #if self.selected.rotation == 0.0:
             self.selected.CalculateBounding()
 
             dc.SetPen(wx.Pen("#438FE6", 2))
@@ -307,8 +334,8 @@ class DrawCanvas(glcanvas.GLCanvas):
     def OnLeftUp(self, event):
         pnt = event.GetPosition()
 
-        if self.mode == ADD_MODE:
-            self.SwitchMode(EDIT_MODE)
+        # if self.mode == ADD_MODE:
+        #     self.SwitchMode(EDIT_MODE)
 
         self.last_pnt = pnt
 
@@ -390,11 +417,18 @@ class DrawCanvas(glcanvas.GLCanvas):
             obj = Ellipse(_id, pos)
         elif obj_type == OBJECT_TEXT:
             obj = Text(_id, pos)
+        elif obj_type == OBJECT_IMAGE:
+            obj = Image(_id, pos)
         else:
             print("Given object types does not exist")
         self.objects.append(obj)
         obj.CalcPostSize()
         return obj
+
+    def DeleteSelectedObject(self):
+        self.objects.remove(self.selected)
+        self.selected = None
+        self.Refresh(False)
 
     def SwitchMode(self, mode):
         self.mode = mode
@@ -416,6 +450,21 @@ class DrawCanvas(glcanvas.GLCanvas):
             print("Please select an object first")
         self.Refresh(False)
 
+
+class ContextMenu(wx.Menu):
+    def __init__(self, parent):
+        super(ContextMenu, self).__init__()
+        self.parent = parent
+
+        delete_menu_item = wx.MenuItem(self, -1, 'Delete object')
+        self.Append(delete_menu_item)
+
+        self.Bind(wx.EVT_MENU, self.OnDeleteObject, delete_menu_item)
+
+    def OnDeleteObject(self, event):
+        self.parent.canvas.DeleteSelectedObject()
+
+
 class Frame(wx.Frame): 
     def __init__(self, parent, title): 
         super(Frame, self).__init__(parent, title=title, size=(1800, 800))  
@@ -435,7 +484,7 @@ class Frame(wx.Frame):
 
         mode = wx.Choice(self, -1, (100, 50), choices=["ADD", "EDIT"])
 
-        obj_types = ["RECTANGLE", "ELLIPSE", "TEXT", "TRIANGLE"]
+        obj_types = ["RECTANGLE", "ELLIPSE", "TEXT", "TRIANGLE", "IMAGE"]
         object_type = wx.Choice(self, -1, (100, 50), choices=obj_types)
 
         props_sz.Add(mode, 0, flag=wx.EXPAND|wx.ALL, border=6)
@@ -451,8 +500,12 @@ class Frame(wx.Frame):
         color_btn.Bind(wx.EVT_BUTTON, self.OnColorButton)
         mode.Bind(wx.EVT_CHOICE, self.OnChangeMode)
         object_type.Bind(wx.EVT_CHOICE, self.OnChangeObjectType)
+        self.canvas.Bind(wx.EVT_RIGHT_DOWN, self.OnRightDown)
 
         self.Maximize()
+
+    def OnRightDown(self, event):
+        self.canvas.PopupMenu(ContextMenu(self.canvas), event.GetPosition())
 
     def OnChangeMode(self, event):
         mode = event.GetString()
@@ -473,6 +526,8 @@ class Frame(wx.Frame):
             obj_type = OBJECT_TEXT
         elif obj_type == "TRIANGLE":
             obj_type = OBJECT_TRIANGLE
+        elif obj_type == "IMAGE":
+            obj_type = OBJECT_IMAGE
         self.canvas.SwitchObjectType(obj_type)
         event.Skip()
 
