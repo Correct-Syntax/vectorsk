@@ -240,6 +240,9 @@ class DrawCanvas(glcanvas.GLCanvas):
         self.mode = EDIT_MODE
         self.current_obj_type = OBJECT_RECT
 
+        self.matrix = skia.Matrix()
+        self.zoom = 1.0
+
         # Stress test
         # for i in range(4, 8000):
         #     e = Ellipse(i)
@@ -253,6 +256,7 @@ class DrawCanvas(glcanvas.GLCanvas):
         self.Bind(wx.EVT_LEFT_DOWN, self.OnLeftDown)
         self.Bind(wx.EVT_LEFT_UP, self.OnLeftUp)
         self.Bind(wx.EVT_MOTION, self.OnMotion)
+        self.Bind(wx.EVT_MOUSEWHEEL, self.OnMousewheel)
         self.Bind(wx.EVT_SIZE, self.OnSize)
         self.Bind(wx.EVT_PAINT, self.OnPaint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda x: None)
@@ -374,6 +378,20 @@ class DrawCanvas(glcanvas.GLCanvas):
                     self.SetCursor(wx.Cursor(wx.CURSOR_SIZENWSE))
                 else:
                     self.SetCursor(wx.Cursor(wx.CURSOR_ARROW))
+
+    def OnMousewheel(self, event):
+        rotation = event.GetWheelRotation()
+        mouse = event.GetPosition()
+
+        if rotation > 1:
+            self.zoom = 1.1
+        elif rotation < -1:
+            self.zoom = 0.9
+
+        self.matrix.postScale(sx=self.zoom, sy=self.zoom, px=mouse[0], py=mouse[1])
+        self.canvas.setMatrix(self.matrix)
+
+        self.Refresh(False)
 
     def SetContextViewport(self, x, y, width, height):
         self.ctx.viewport = (x, y, width, height)
