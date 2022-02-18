@@ -45,6 +45,9 @@ ALIGN_MIDDLE	= 1 << 4 # Align text vertically to middle.
 ALIGN_BOTTOM	= 1 << 5 # Align text vertically to bottom.
 ALIGN_BASELINE	= 1 << 6 # Default, align text vertically to baseline.
 
+# Test an animation
+ANIMATION_TEST = False
+
 
 class BaseObject(object):
     def __init__(self, id, pos):
@@ -245,13 +248,25 @@ class DrawCanvas(glcanvas.GLCanvas):
 
         # Stress test
         # for i in range(4, 8000):
-        #     e = Ellipse(i)
+        #     e = Ellipse(i, (0, i+30))
         #     self.objects.append(e)
+        #     e.CalcPostSize()
 
         obj = Rectangle(23, (100, 100))
         obj.size = (200, 200)
         obj.CalculateBounding()
         self.objects.append(obj)
+
+        if ANIMATION_TEST:
+            self.p = 0
+
+            self.timer = wx.Timer(self)
+            self.timer.Start(0)
+
+            self.obj = Rectangle(23, (0, 0))
+            self.obj.size = (200, 200)
+            self.obj.CalculateBounding()
+            self.objects.append(self.obj)
 
         self.Bind(wx.EVT_LEFT_DOWN, self.OnLeftDown)
         self.Bind(wx.EVT_LEFT_UP, self.OnLeftUp)
@@ -260,6 +275,16 @@ class DrawCanvas(glcanvas.GLCanvas):
         self.Bind(wx.EVT_SIZE, self.OnSize)
         self.Bind(wx.EVT_PAINT, self.OnPaint)
         self.Bind(wx.EVT_ERASE_BACKGROUND, lambda x: None)
+
+        if ANIMATION_TEST:
+            self.Bind(wx.EVT_TIMER, self.OnTimer)
+
+    def OnTimer(self, event):
+        self.obj.pos = (self.p, self.p)
+        self.Refresh(False)
+        self.p += 10
+        if self.p == 1000:
+            self.timer.Stop()
 
     def OnEraseBackground(self, event):
         pass  # Do nothing, to avoid flashing on MSW.
