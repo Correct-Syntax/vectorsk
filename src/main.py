@@ -55,7 +55,7 @@ class BaseObject(object):
         self.pos = pos
         self.size = (1.0, 1.0)
         self.rotation = 0.0
-        self.fill_color = (0.0, 0.2, 1.0, 1.0)
+        self.fill_color = (0.0, 1.0, 0.0, 1.0)
 
     def CalculateBounding(self):
         self.CalcHandles()
@@ -247,10 +247,11 @@ class DrawCanvas(glcanvas.GLCanvas):
         self.zoom = 1.0
 
         # Stress test
-        # for i in range(4, 8000):
-        #     e = Ellipse(i, (0, i+30))
+        # for i in range(4, 10000):
+        #     e = Rectangle(i, (0, i+30))
         #     self.objects.append(e)
         #     e.CalcPostSize()
+        #     e.CalculateBounding()
 
         obj = Rectangle(23, (100, 100))
         obj.size = (200, 200)
@@ -286,6 +287,12 @@ class DrawCanvas(glcanvas.GLCanvas):
         if self.p == 1000:
             self.timer.Stop()
 
+    def ToGlobal(self, p):
+        '''Convert an (x, y) tuple to global space.'''
+        x, y = p
+        (gx, gy), = self.matrix.mapPoints([skia.Point(x, y)])
+        return wx.Point(int(gx), int(gy))
+
     def OnEraseBackground(self, event):
         pass  # Do nothing, to avoid flashing on MSW.
 
@@ -313,6 +320,14 @@ class DrawCanvas(glcanvas.GLCanvas):
             skia.kRGBA_8888_ColorType, skia.ColorSpace.MakeSRGB())
         self.canvas = self.surface.getCanvas()
 
+    def DrawOverlay(self, canvas, obj):
+        strokePaint = skia.Paint(
+            Color=skia.Color(64, 143, 240, 255),
+            Style=skia.Paint.kStroke_Style,
+            StrokeWidth=1.0
+        )
+        canvas.drawRect(obj.bounding_rect, strokePaint)
+
     def OnPaint(self, event):
         dc = wx.PaintDC(self)
         self.SetCurrent(self.glcanvas)
@@ -320,20 +335,21 @@ class DrawCanvas(glcanvas.GLCanvas):
             self.InitGL()
             self.init = True
         self.OnDraw()
-        if self.selected is not None:
+        #if self.selected is not None:
             #if self.selected.rotation == 0.0:
-            self.selected.CalculateBounding()
+            #self.selected.CalculateBounding()
 
-            dc.SetPen(wx.Pen("#438FE6", 2))
-            dc.SetBrush(wx.TRANSPARENT_BRUSH)
-            dc.DrawRectangle(self.selected.bounding_rect)
+            #self.DrawOverlay(self.canvas, self.selected)
+            # dc.SetPen(wx.Pen("#438FE6", 2))
+            # dc.SetBrush(wx.TRANSPARENT_BRUSH)
+            # dc.DrawRectangle(self.selected.bounding_rect)
 
-            dc.SetPen(wx.Pen("#438FE6", 1))
-            dc.SetBrush(wx.Brush("#fff"))
-            dc.DrawRoundedRectangle(self.selected.overlay_tl, 2)
-            dc.DrawRoundedRectangle(self.selected.overlay_tr, 2)
-            dc.DrawRoundedRectangle(self.selected.overlay_bl, 2)
-            dc.DrawRoundedRectangle(self.selected.overlay_br, 2)
+            # dc.SetPen(wx.Pen("#438FE6", 1))
+            # dc.SetBrush(wx.Brush("#fff"))
+            # dc.DrawRoundedRectangle(self.selected.overlay_tl, 2)
+            # dc.DrawRoundedRectangle(self.selected.overlay_tr, 2)
+            # dc.DrawRoundedRectangle(self.selected.overlay_bl, 2)
+            # dc.DrawRoundedRectangle(self.selected.overlay_br, 2)
 
     def OnDraw(self):
         self.SetContextViewport(0, 0, self.Size.width, self.Size.height)
@@ -342,6 +358,7 @@ class DrawCanvas(glcanvas.GLCanvas):
 
     def OnLeftDown(self, event):
         pnt = event.GetPosition()
+        pnt = self.ToGlobal(pnt)
 
         if self.mode == ADD_MODE:
             self.selected = self.AddObject(pnt, self.current_obj_type)
@@ -350,8 +367,8 @@ class DrawCanvas(glcanvas.GLCanvas):
             obj = self.ObjectHitTest(pnt)
             if obj is not None:
                 self.selected = obj
-            # else:
-            #     self.selected = None
+            else:
+                self.selected = None
 
             if self.selected:
                 self.handle = self.HandlesHitTest(pnt)
@@ -362,6 +379,7 @@ class DrawCanvas(glcanvas.GLCanvas):
 
     def OnLeftUp(self, event):
         pnt = event.GetPosition()
+        pnt = self.ToGlobal(pnt)
 
         # if self.mode == ADD_MODE:
         #     self.SwitchMode(EDIT_MODE)
@@ -370,6 +388,7 @@ class DrawCanvas(glcanvas.GLCanvas):
 
     def OnMotion(self, event):
         pnt = event.GetPosition()
+        pnt = self.ToGlobal(pnt)
 
         if self.mode == ADD_MODE:
             if event.LeftIsDown() and self.selected != None and event.Dragging():
@@ -413,8 +432,9 @@ class DrawCanvas(glcanvas.GLCanvas):
         elif rotation < -1:
             self.zoom = 0.9
 
-        self.matrix.postScale(sx=self.zoom, sy=self.zoom, px=mouse[0], py=mouse[1])
-        self.canvas.setMatrix(self.matrix)
+        # self.matrix.postScale(sx=self.zoom, sy=self.zoom, px=0, py=0)
+        # self.matrix.postScale(sx=self.zoom, sy=self.zoom, px=mouse[0], py=mouse[1])
+        # self.canvas.setMatrix(self.matrix)
 
         self.Refresh(False)
 
@@ -426,6 +446,10 @@ class DrawCanvas(glcanvas.GLCanvas):
 
         for obj in self.objects:
             obj.DrawObject(self.canvas)
+
+        if self.selected is not None:
+            self.selected.CalculateBounding()
+            self.DrawOverlay(self.canvas, self.selected)
 
         # self.canvas.clipRect(skia.Rect(0, 0, 600, 600))
         self.surface.flushAndSubmit()
